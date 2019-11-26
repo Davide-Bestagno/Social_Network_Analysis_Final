@@ -1,0 +1,661 @@
+---
+title: "18126_MY461_Final"
+author: '18126'
+date: "09/04/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##### Checks
+getwd()
+setwd("/Users/davidebestagno/Documents/University/LSE/MY461/")
+
+
+## Set up and data
+```{r}
+#libary used
+library(igraph)
+library(scales)
+library(RColorBrewer)
+
+#data
+bill_data <- read.csv("110_billspon.csv", header = T, row.names = "X", as.is = T)
+sen_data <- read.csv("110_sen.csv", header = T, row.names = "Name", as.is = T)
+#for bill the column names are the names of the senators and the row names are the Bills
+#for sen the column names are the chracteristics of the senators and the row names are the names of the senators
+```
+
+## Bill network & complete network
+```{r}
+#I realised too late in the process that it was possible to create the graphs using an incidence matrix as done in questin 4. As a consequnce, I preferred to mantain the code I created, even though it is less efficient, to not incur in any discrepancy.
+#On my laptop (16GB ram) this takes about 20 minutes to complete, sorry for any trouble caused.
+
+edge_list <- c()
+
+for (r in 1:nrow(bill_data)) 
+  {#this is a loop for every row of a dataframe
+  list_row <- c()
+  draft_edge_list <- c()
+  i <- 1
+  p <- 1
+  for (c in 1:ncol(bill_data))
+    { # this is a for loop for every obervations in a row
+    if(bill_data[r,c] != 0) 
+      {
+      list_row[[i]] <- colnames(bill_data)[c]
+      i <- i+1
+      }
+    }
+    
+  if(length(list_row) > 1) 
+    {
+       
+    for (i in 1:ncol(combn(list_row,2)))
+      {
+      draft_edge_list[[p]] <- combn(list_row,2)[1,i]
+      p <- p+1
+      draft_edge_list[[p]] <- combn(list_row,2)[2,i]
+      p <- p+1
+      }
+    }
+  edge_list <- append(edge_list, draft_edge_list)
+}
+
+bill <- graph(edges=edge_list, directed = F) #bill network with no weigths and not alphabetically ordered node names
+adj_bill <- get.adjacency(bill) #adjeciency matrix
+#sort alphabetically all the column and row names to have the attributes correctly linked
+adj_bill <- as.matrix(adj_bill[order(rownames(adj_bill)),order(colnames(adj_bill))]) 
+
+bill <- graph.adjacency(adj_bill, mode = "undirected") #no weights and ordered
+complete <- graph.adjacency(adj_bill, mode="undirected", weighted=T) #bill network with weights
+adj_complete <- adj_bill #adjecicency matrix
+plot(complete)
+```
+
+```{r}
+summary(simple)
+```
+
+
+
+##### Adding metadata to the bill and complete network
+```{r}
+#maybe not necessary
+V(bill)$Party <- sen_data$Party
+V(bill)$Gender <- sen_data$Gender
+V(bill)$Religion <- sen_data$Religion
+V(bill)$Class <- sen_data$Class
+V(bill)$State <- sen_data$State
+V(bill)$CensusRegion <- sen_data$CensusRegion
+V(bill)$PriorExperience <- sen_data$PriorExperience
+V(bill)$Education <- sen_data$Education
+V(bill)$FirstTookOffice <- sen_data$FirstTookOffice
+V(bill)$Born <- sen_data$Born
+#get.vertex.attribute(complete)
+#get.vertex.attribute(complete, name = "Party", index = V(complete)$"ChamblissSaxby")
+
+V(complete)$Party <- sen_data$Party
+V(complete)$Gender <- sen_data$Gender
+V(complete)$Religion <- sen_data$Religion
+V(complete)$Class <- sen_data$Class
+V(complete)$State <- sen_data$State
+V(complete)$CensusRegion <- sen_data$CensusRegion
+V(complete)$PriorExperience <- sen_data$PriorExperience
+V(complete)$Education <- sen_data$Education
+V(complete)$FirstTookOffice <- sen_data$FirstTookOffice
+V(complete)$Born <- sen_data$Born
+```
+
+##### Summary and quartiles
+```{r}
+summary(complete)
+#nb there are 102 senators instead than the usual 100 because one died (Craig Thomas replaced by John Barrasso) and one resigned (Trent Lott replaced by Roger Wicker).
+lwr_bill <- adj_bill[lower.tri(adj_bill, diag = F)]
+quantile(lwr_bill)
+```
+103 is the cut off for the upper quartile
+
+## Simple network (only edges between nodes with more than 103 bills cosponsored)
+```{r}
+adj_bill[adj_bill < 103] <- 0
+#changing of values on the adjeciency matrix of the complete network to 0 if lower than 103 creates the adjeciency matrix for the simple network
+simple <- graph.adjacency(adj_bill, mode="undirected", weighted = T)
+
+#adding metadata
+V(simple)$Party <- sen_data$Party
+V(simple)$Gender <- sen_data$Gender
+V(simple)$Religion <- sen_data$Religion
+V(simple)$Class <- sen_data$Class
+V(simple)$State <- sen_data$State
+V(simple)$CensusRegion <- sen_data$CensusRegion
+V(simple)$PriorExperience <- sen_data$PriorExperience
+V(simple)$Education <- sen_data$Education
+V(simple)$FirstTookOffice <- sen_data$FirstTookOffice
+V(simple)$Born <- sen_data$Born
+
+#Summary and plot
+summary(simple)
+plot(simple)
+```
+
+
+## Question 1
+Consider the overall metrics (density, average path length, transitivity) of both the full and the simplified networks. How do the two networks compare to each other? Compare the simplified network to random networks created with the Erdős–Rényi and the configuration models. What do these comparisons tell you about the nature and structure of the relationships among the senators? In your answer, make sure to define each of the metrics and give an intuitive interpretation for them.
+
+
+```{r}
+totd <- degree(simple, mode='all')
+#Since Erdős–Rényi is a randomly generated, I am avereging the result over 100 instances
+GNP <- lapply(rep(1, 100), function(x)
+  sample_gnp(102, mean(totd)/101))
+GNP_d <- sapply(GNP, graph.density)
+GNP_a <- sapply(GNP, average.path.length)
+GNP_t <- sapply(GNP, transitivity)
+
+
+outd <- degree(simple, mode = "out")
+ind <- degree(simple, mode = "in")
+
+#Since the Configuration model is randomly generated, I am avereging the result over 100 intances
+Conf <- lapply(rep(1, 100), function(x)
+  sample_degseq(out.deg = outd, in.deg = ind, method = "simple"))
+Conf_d <- sapply(Conf, graph.density)
+Conf_a <- sapply(Conf, average.path.length)
+Conf_t <- sapply(Conf, transitivity)
+
+#result table
+res_table <- data.frame(c('Complete', 'Simple','Erdos-Renyi', 'Configuration'), 
+                        c(graph.density(complete), graph.density(simple), mean(GNP_d), mean(Conf_d)),
+                        c(average.path.length(complete), average.path.length(simple), mean(GNP_a), mean(Conf_a)),
+                        c(transitivity(complete), transitivity(simple), mean(GNP_t), mean(Conf_t)))
+colnames(res_table) <- c('Model','Density', 'Average path length', 'Transitivity')
+res_table
+```
+
+Density is defined as the the ratio of the number of edges and the number of possible edges in a network. This concept was first used in Social Network Analysis by Clyde Mitchell, and he interpreted it as the completness of the network (Scott, 2017, p.33). Usually, social networks with higher density tend to represent a more closely knit community. For instance, Wellman's (1979) study of inner city suburb showed that the densest network where the ones mainly composed by members of the same kin. (p.1217)
+
+Average path length on the other hand is defined as the average of the geodesic distance between two nodes, for all nodes in a network. This metric can be used a a proxy to measure of how fast information can pass across the whole network. For instance, if the average path length is very low, it means that the network is well connected and information can take be spread quickly throughout the network. 
+
+Lastly, transitivity (sometimes called clustering coefficient) measures the probability that the neighbours of a node are themselves connected. High levels of transitivity indicate greater clustering, something usually found in real social network rather than in randomly generated ones.
+
+The complete network has all the previously defined metrics equal to 1. This means that the network has all possible edges, the geodesic path for any couple of nodes is a single edge , and for every nodes all the neighbours are connected between each other. In other words the graph is complete.
+
+The simple network, instead, has features more similar to the ones produced by the small world experiment, which are relatively low average path lenght and high transitivity (Travers & Milgram, 1969).
+
+The difference between the complete network and the simple network is probably due to the fact that often the bills have dozens of cosponsors, hence it is likely for senators to have at least one cosponsored bill in common with any other senator in a two year period. However, they cetrainly have have much stronger relations with other specific senator probably due to being in the same party, or closer in terms of political ideologies. As a consequnce, when we look only at the strongest relations between senators, there are fewer edges, which causes the lower density and transitivity and increases the path lenght.
+
+When trying to simulate the simple netwrok, the Erdős–Rényi and Configuration are both extremely accurate for the density and the path lenght. However, They are both quite far away from the transitivity value of the simple model. The configuration model is definitely much closer than the Erdös-Rényi, probably due to the fact that the configuration model mantains the exact degree distribution of the simple network for each node (in fact the density value is exaclty the same). Instead the Erdös-Rènyi model is randomly generated following a predefined probability.
+
+
+
+## Question 2
+Who do you see as the most influential senators in the 110th Congress? Identify two potential meanings of “influence,” as proxied by different centrality measures. Justify your choice of each centrality measure. In that justification, present clear interpretations of what each centrality measure is capturing about the position of senators. For each of your chosen centrality measures, identify the senator who has the highest value in the simplified network. Discuss why you think that senator is the most central in the network.Make explicit reference in your response to the concepts of social capital and brokerage/structural holes covered in the course material. [Note that if you use edge weight for a centrality measure, you need to identify how the calculation interprets those weights (i.e., do higher values mean greater closeness or greater distance?); in those cases where the measure assumes that higher values means greater distance, you should use 1/weight in the calculation.]
+```{r}
+#Degree Centrality (need this for later calculation this is not one of the two centrality measures analysed)
+deg <- degree(simple)
+summary(deg)
+#Coleman Norm has the most strong connections (mean is 25.59 strong connection) he has 69 i.e. he probably is very prolific and/or cosponsors bills with other senators of many differnet ideological positions
+
+#Eigenvector Centrality
+eig <- evcent(simple, weights = E(simple)$weight)$vector #This function interprets weights as connection strength. Hence, higher score for stronger connections
+summary(eig) #median eigenvector score is lower than the mean, there are probably some very prominent senators that bring the average up.
+
+#Who has the highest score?
+tail(sort(eig),1) 
+#Hilary clinton has the higehst eigenvector centrality
+
+#what about top 30?
+tail(sort(eig),30)
+
+#Visualisation of eigenvector centrality with node size depending on eigenvector score
+#node colour depends on party affiliation
+slayout <- layout.fruchterman.reingold(simple)
+plot(simple,
+     vertex.color=ifelse(V(simple)$Party == "Republican", "red", "blue"),
+     vertex.size=rescale(eig, c(0.2,5)),
+     edge.width=0.5,layout=slayout,
+     xlim = c(-0.50,-0.40),
+     ylim = c(-0.55,-0.27))
+#The plot is zoomed in on the main component of the graph, isolate nodes are therfore not in the plot
+legend("left",bty = "n",
+       legend=c("Republican","Democratic"),
+       fill=c("red","blue"), border=NA)
+#The plot isn't very clear, using ego networks might help with this
+
+#ego network for Hilary clinton, same type of visualisation as before
+Hilary <- make_ego_graph(simple, order = 1, c("ClintonHillaryRodham"))
+Hilary <- Hilary[[1]]
+star1 <- layout.star(Hilary, center = V(Hilary)["ClintonHillaryRodham"])
+
+#to get the summary statistics of eig just for the Hilary ego network
+e <- as.data.frame(eig)
+e$name <- rownames(e)
+vect <- c(V(Hilary)$name)
+names <- as.data.frame(vect)
+names$name <- rownames(names)
+e <- e[e$name %in% names$vect,]
+summary(e$eig)
+
+pdf("Hilary_ego.pdf")
+plot(Hilary,
+     vertex.color=ifelse(V(Hilary)$Party == "Republican", "red", "blue"),
+     vertex.size=6,
+     edge.width=0.1,
+     layout=star1)
+
+title(main = "Hilary Clinton Ego Graph", sub = "Larger nodes have higher eigenvector centrality")
+
+legend("topright",bty = "n",
+       legend=c("Republican","Democratic"),
+       fill=c("red","blue"), border=NA)
+dev.off()
+
+#Hilary is connected to all the other top 10 eigen value senators
+#This is not very suprising as eigen vector centrality usually means you are connected to other individuals with high eigen vector centraility. It is not a given though.
+
+
+#Betweenness Centrality (how often does a node lie on the geodesic path between other nodes)
+bet <- betweenness(simple, weights = 1/(E(simple)$weight))
+summary(bet) #this summary doesn't give a lot of information, but if shows that only the nodes in the top quartile could have some brokerage strength.
+
+#Who has the highest betweenness centrality?
+tail(sort(bet),1)
+#Norm Coleman
+
+#What about top 30?
+tail(sort(bet),30)
+#Kerry is second both in betweeness and eigenvector centrality.
+
+
+#Visualisation of the simple network with betweeness centrality determining the size of the nodes and colour determined by party affiliation.
+plot(simple,
+     vertex.color=ifelse(V(simple)$Party == "Republican", "red", "blue"),
+     vertex.size=rescale(bet, c(1,10)),
+     edge.width=0.5,layout=slayout,
+     xlim = c(-0.50,-0.40),
+     ylim = c(-0.70,-0.30))
+
+legend("left",bty = "n",
+       legend=c("Republican","Democratic"),
+       fill=c("red","blue"), border=NA)
+
+#Norm Coleman ego network
+Norm <- make_ego_graph(simple, order = 1, c("ColemanNorm"))
+Norm <- Norm[[1]]
+star2 <- layout.star(Norm, center = V(Norm)["ColemanNorm"])
+
+#Eif for Norm ego network
+e <- as.data.frame(eig)
+e$name <- rownames(e)
+vect <- c(V(Norm)$name)
+names <- as.data.frame(vect)
+names$name <- rownames(names)
+e <- e[e$name %in% names$vect,]
+summary(e$eig)
+
+pdf("Coleman_ego.pdf")
+plot(Norm,
+     vertex.color=ifelse(V(Norm)$Party == "Republican", "red", "blue"),
+     vertex.size=6,
+     edge.width=0.1,
+     layout = star2)
+
+title(main = "Norm Coleman Ego Graph", sub = "Larger nodes have higher eigenvector centrality")
+
+
+legend("topright",bty = "n",
+       legend=c("Republican","Democratic"),
+       fill=c("red","blue"), border=NA)
+dev.off()
+
+V(Norm)[Party == "Republican"] #31 Republicans (31 if excluding him) and 40 Demorcats
+V(Hilary)[Party == "Republican"] #15 Republicans out of 62
+V(Kerry)[Party == "Republican"] #16 Republicans out of 63
+#Clearly he is a greater broker and gains prominence from the willingness to collaborate of so many democrats.
+
+#for ease of understanding
+cents<- data.frame(deg, bet, eig)
+print(cents)
+
+#ego netwrok for John Kerry
+Kerry <- make_ego_graph(simple, order = 1, c("KerryJohnF"))
+Kerry <- Kerry[[1]]
+star3 <- layout.star(Kerry, center = V(Kerry)["KerryJohnF"])
+
+#for eig values in the Kerry network
+e <- as.data.frame(eig)
+e$name <- rownames(e)
+vect <- c(V(Kerry)$name)
+names <- as.data.frame(vect)
+names$name <- rownames(names)
+e <- e[e$name %in% names$vect,]
+summary(e$eig)
+
+plot(Kerry, 
+     vertex.color=ifelse(V(Kerry)$Party == "Republican", "red", "blue"),
+     vertex.size=6,
+     edge.width=0.1,
+     layout=star3)
+
+legend("topright",bty = "n",
+       legend=c("Republican","Democratic"),
+       fill=c("red","blue"), border=NA)
+```
+
+In this network influence can be defined as having cosponsoring relationships with other highly influential senators or with senators which might not have a strong relationship between them, Therefore, the two centrality measures that best describe influence are eigenvector and betweenness centrality.
+
+Eigenvector centrality is an extension of degree centrality, which gives a score to each node depending on the relative importance of the scores of the neighbors. It can be used as a measurement of the social capital of a node, which Bourdieu (1986) defines as “the aggregate of the actual or potential resources which are linked to possession of a durable network” (p.244). The benefits of having large social capital are varied, however in the context of the simple network it could mean being able to have important senators cosponsoring one’s bill or being able to tweak another senators bill to push one’s agenda. 
+
+Betweenness centrality instead measures how often a node is part of the shortest path between other nodes. Therefore, a node with a high betweenness doesn’t need to have a high degree, but it lies in such a position that most geodesic path pass through it. Consequently, high betweenness centrality has been correlated in social networks to the ability of a node to be a broker between two different sides of a network (Scott, 2017, p.99). In the context of the simple network this means that a senator with high betweenness could act as an intermediary between two senators that might have diverging political ideas.
+
+I believe that the three most influential senators are: Hilary Clinton, Norm Coleman and John Kerry.
+
+Clinton has the highest eigenvector centrality and as shown in the ego graph, most of Clinton’s neighbors also have high eigenvector centrality. Her large social capital is probably due to the two decades in the upper echelons of Washington as first lady and as senator. This makes her incredibly influential as she is one of the most well-known and well-connected figures in the senate. Anyone with her cosponsorship can immediately use her social capital to give more standing, and possible more cosponsors, to the bill.
+
+Instead, Coleman has the highest betweenness centrality, which is not unexpected considering he used to be a Democrat and was considered one of the most moderate republicans in senate (GovTrack, 2019). Clearly, he was able to position himself as a broker between the two parties having almost as many democratic as republican neighbors (37 republican, 32 democratic neighbors.) However, he only has the 27th highest eigenvector score. Hence, part of his influence may be the willingness to cooperate with less prominent senators, hence his strength might also come from his weak ties (Granovetter, 1973).
+
+Lastly, Kerry has both the second highest betweenness centrality and eigenvector centrality. Therefore, he has both types of influence that Coleman and Clinton have, probably making him the most influential senator in the network. Yet, he might lack Coleman’s level of strength of weak ties and Clinton’s level of notoriety.
+
+## Question 3
+How does political party membership influence bill co-sponsorship? 
+Calculate the assortativity by political party and the probability of a co-sponsorship tie within and between each party (using a blockmodel approach) for the simplified network.
+Run the Louvain community detection algorithm on the full network and see how the resulting communities align (or not) with political party. 
+Plot the full network twice (with the same layout) with nodes coloured by (1) the results of the community detection algorithm and (2) the vertex attribute which you identify as most closely aligning with the resulting communities (include a figure label).
+Discuss what the results of these analyses imply about the political parties at this time.
+
+
+Party assortativity in the simple network is relatively low but positive, with a value of 0.2919754. This means that there is a 29.20% chance that two members of the same party have a strong cosponsorship relation between them. As a consequence, we can conclude that party affiliation has a small degree of influence on bill cosponsorship, but it does not absolutely guarantee that same party senators will cosponsors the bill.
+
+However, this result is an average of the behavior of the whole network. In fact, the matrix produced by the stochastic blockmodel clearly shows very different behaviors from the senators of the two parties: The probability of ties within the Democratic party is quite high (61.88%), while ties within the Republican party have a similar probability (12.63%) as ties between members of different parties (13.65%). This is evidence that the Democratic senators are much more likely to cosponsor the bills of members of the same party, probably due to the fact that having a majority they do not necessarily need the support of Republican senators to pass a bill. Instead, the Republican senators do not really seem to have a preference for cosponsoring the bills of their own party. The result actually suggests a marginal preference for members of the Republican party to cosponsor bills with Democratic senators but, being the difference in probability only around 1% , we can consider the Republican senators as having no preference when it comes to cosponsoring bills. This might be due to a variety of reason. Maybe they decide on a case by case basis instead of strictly cosponsoring bills along party lines. This is not a surprising behavior for a party without a majority (as it was the case for the Republicans in the 110th Congress) since they necessarily need to collaborate with member of the majority party to enact legislation. Another possibility is that the Republican party includes members of a very wide political spectrum, which might not necessarily agree with the contents of another party member’s bill. This seems to be supported by the ideology analysis conducted by UCLA, shown below, which shows a very spread out Republican party both in terms of economic and social ideology.
+
+![110th Congress Ideology (Lewis, 2019)](/Users/Davide/Downloads/plot_Senators_115.png)
+
+Lastly, the Louvain community algorithm identifies two communities, and these communities align quite well with party membership, as proven by the comparison via normalized mutual information, which produces a result of 0.6475944, the highest of all network attributes. The results are even more clear in the plot shown above. Party affiliation is such a close match that only 7 nodes are classified differently in the Louvain communities. This seems to show that also single cosponsoring relations are affected by party membership, maybe even more strongly than the simple network. However, these results are to be taken with a pinch of salt as the comparison shows that the communities are not perfectly equivalent and other community algorithm might produce very different results.
+
+```{r}
+#party assortitivity
+assortativity.nominal(simple,as.factor(V(simple)$Party), directed = F)
+
+#different library needed
+detach(package:igraph)
+library(intergraph)
+library(sna)
+snet<-asNetwork(simple)
+blockmatrix <- blockmodel(snet,ec= as.numeric(as.factor(snet %v% "Party")), rlabels = unique(as.factor(snet %v% "Party")))$block.model #maybe check if it changes with a version of complete without weights
+print(blockmatrix)
+#reattaching igraph
+detach(package:sna)
+detach(package:intergraph)
+library(igraph)
+
+set.seed(1) #this is needed to prevent different representation of the graph
+
+L1 = layout.fruchterman.reingold(complete)
+## Party
+CL_complete <- cluster_louvain(complete, weights = E(complete)$weight) 
+sizes(CL_complete) #Only two communities identified and both are around 50% of the total. Hence, party seems like the closet.
+compare(as.factor(V(complete)$Party),CL_complete,method="nmi") #0.6475944
+table(V(complete)$Party,membership(CL_complete)) #not super precise, overstimation of the number of Democrats
+
+#checking for gender
+compare(as.factor(V(complete)$Gender),CL_complete,method="nmi") #only 0.05722225 very low
+table(V(complete)$Gender,membership(CL_complete))
+
+#checking for Religion
+compare(as.factor(V(complete)$Religion),CL_complete,method="nmi") #only 0.1374036 still low
+
+#checking for Class
+compare(as.factor(V(complete)$Class),CL_complete,method="nmi") #only 0.02149391 still low
+
+#checking for State
+compare(as.factor(V(complete)$State),CL_complete,method="nmi") #only 0.2297359 still low
+
+#checking for CensusRegion 
+compare(as.factor(V(complete)$CensusRegion),CL_complete,method="nmi") #only 0.1234663 still low
+
+#checking for PriorExperience
+compare(as.factor(V(complete)$PriorExperience),CL_complete,method="nmi") #only 0.2308644 still low
+
+#checking for Education
+compare(as.factor(V(complete)$Education),CL_complete,method="nmi") #only 0.256305 still low
+
+#checking for FirstTookOffice
+compare(as.factor(V(complete)$FirstTookOffice),CL_complete,method="nmi") #only 0.0792581 still low
+
+#checking for Born
+compare(as.factor(V(complete)$Born),CL_complete,method="nmi") #only 0.110897 still low
+
+#
+
+#Therefore the attribute that allign more cloesly with the Louvain communities is Party
+
+pdf("Louvain.pdf")
+par(mfrow=c(2,1)) #uncomment for side by side
+plot(complete,
+     vertex.size = 6,
+     vertex.label = NA,
+     edge.width=0.1,
+     layout = L1,
+     vertex.color = ifelse(V(complete)$Party == "Republican", "red", "blue")) 
+title(main = "Vertex colour from Party memebership")
+legend("bottomright",bty = "n",
+       legend=c("Republican","Democratic"),
+       fill=c("red","blue"), border=NA)
+#As it turns out Party affiliation is almost a perfect match, no doubt also due to the fact that the relations depend on the willingness to cosponsor bills. Hence, political ideologies are proxied by party affiliation. 
+
+plot(complete,
+     vertex.size = 6,
+     vertex.label = NA,
+     edge.width=0.1,
+     layout = L1,
+     vertex.color = ifelse(membership(CL_complete) == 1, "red", "blue"))
+title(main = "Vertex colour from Louvain community detection algorithm ")
+legend("bottomright",bty = "n",
+       legend=c("Community 1","Community 2"),
+       fill=c("red","blue"), border=NA)
+dev.off()
+#Only 7 nodes are classified incorectly
+```
+
+
+## Question 4
+Do different senators seem to fulfil different roles in the senate? Evaluate the structural equivalency of the senators in the full network and use this to divide the senators into four equivalency classes. Interpret the four groups identified, drawing on information regarding party and leadership. Discuss what this implies about the senators, drawing on the concepts of position and role.
+
+```{r}
+library(NetCluster)
+library(gplots)
+library(blockmodeling)
+#Pearson correlation coefficient
+adj_complete <- as.matrix(adj_complete)
+cor(adj_complete)
+#dissimilarity matrix
+as.dist(1-cor(adj_complete),upper=TRUE) 
+
+#dendrogram
+m1 <- as.dist(1-cor(adj_complete))
+m1[is.na(m1)==TRUE]<-2
+full_dend<-hclust(m1)
+pdf("Dendrogram.pdf")
+plot(full_dend)
+dev.off()
+
+pdf("Heatmap.pdf")
+heatmap.2(as.matrix(m1),trace="none",revC=TRUE) #shows very similiar results to the below plot
+title(main = "Heat map")
+dev.off()
+
+
+IVclass <- cutree(full_dend, k=4)
+pal1 <- brewer.pal(4,"Set1")
+pdf("Eq_class.pdf")
+plot(complete,edge.width=0.05, vertex.size = 6, vertex.color=pal1[IVclass], vertex.shape = ifelse(V(complete)$Party == "Republican", "square", "circle"), layout = L1)
+legend("bottomright",bty = "n",
+       legend=c("Class 1","Class 2", "Class 3", "Class 4"),
+       fill=pal1, border=NA)
+title(main = "Equivalence classes", sub = "Circles denote Democrats, Squares denote Republicans")
+dev.off()
+class_membership <- sen_data
+class_membership <- cbind(class_membership, IVclass)
+
+Class1 <- class_membership[class_membership$IVclass ==1, ]
+Class2 <- class_membership[class_membership$IVclass ==2, ]
+Class3 <- class_membership[class_membership$IVclass ==3, ]
+Class4 <- class_membership[class_membership$IVclass ==4, ]
+
+library(plyr)
+count(Class1$Party) #mostly Democraic
+count(Class1$Gender) #mostly male but I think almost all of the women
+count(Class1$Religion) #a lot of jewish (13) all of them?
+count(Class1$Class)
+count(Class1$State)
+count(Class1$CensusRegion)
+count(Class1$PriorExperience)
+count(Class1$Education)
+count(Class1$FirstTookOffice)
+count(Class1$Born)
+
+count(Class2$Party) #mostly republican
+count(Class2$Gender) #mostly male only one woman
+count(Class2$Religion) #100%catholic
+count(Class2$Class)
+count(Class2$State)
+count(Class2$CensusRegion)
+count(Class2$PriorExperience)
+count(Class2$Education)
+count(Class2$FirstTookOffice) #much older than 2 and 3
+count(Class2$Born) #much earlier than 2 and 3
+
+count(Class3$Party) #100% republican
+count(Class3$Gender) #100% male
+count(Class3$Religion) #100% cristian
+count(Class3$Class)
+count(Class3$State)
+count(Class3$CensusRegion)
+count(Class3$PriorExperience)
+count(Class3$Education)
+count(Class3$FirstTookOffice)
+count(Class3$Born)
+
+count(Class4$Party) #100% republican
+count(Class4$Gender) # 7 male 1 female
+count(Class4$Religion) #100% cristian
+count(Class4$Class)
+count(Class4$State)
+count(Class4$CensusRegion)
+count(Class4$PriorExperience)
+count(Class4$Education)
+count(Class4$FirstTookOffice)
+count(Class4$Born)
+
+
+# #blockmodelling for regular equivalence
+# 
+# full_rege<-REGE.nm.for(adj_complete)$E ## Here, I'm choosing one of the variants of the REGE function. The REGE() output gives us more information than just the resulting matrix of regular equivalence; the $E takes just that bit of the output
+# full_rege
+# 
+# plot.mat(adj_complete, clu=cutree(hclust(d=as.dist(1-full_rege),method="ward.D"),k=4))
+# plot(complete,
+#      vertex.size = 6,
+#      edge.width = 0.05,
+#      vertex.shape = ifelse(V(complete)$Party == "Republican", "square", "circle"),
+#      vertex.color=cutree(hclust(d=as.dist(1-full_rege),method="ward.D"), k=4),
+#      layout = L1)
+
+# #different method
+# full_dend<-hclust(dist(t(adj_complete)))
+# plot(full_dend)
+# heatmap.2(as.matrix(dist(t(adj_complete))),trace="none",revC=TRUE)
+# 
+# IVclass <- cutree(full_dend, k=4)
+# plot(complete,edge.width=0.05, vertex.size = 6, vertex.color=IVclass, vertex.shape = ifelse(V(complete)$Party == "Republican", "square", "circle"), layout = L1)
+
+
+```
+Do different senators seem to fulfil different roles in the senate? Evaluate the structural equivalency of the senators in the full network and use this to divide the senators into four equivalency classes. Interpret the four groups identified, drawing on information regarding party and leadership. Discuss what this implies about the senators, drawing on the concepts of position and role.
+
+The dendrogram shows that there are no structurally equivalent nodes, or in other words there are no two senators that have exactly the same connections. However, as the heatmap shows there seems to be one group - the one forming the red rectangle in the bottom right - that has a homogeneous behavior. 
+
+After splitting the dendrogram in four classes it seems pretty clear that this group - Class 1 - is dominated by Democrats and also has left leaning Republicans such as Snowe, Collins or Coleman (Lewis, 2019). As shown by the heatmap, this class' behaviour is particularly similiar, probably more than the other three classes. This is probably due to the Democratic party having control of the Senate, which means that we could identify this group as being in the position of "working majority" of the Senate. As such, they do not necessarily need the support of the other classes, to pass bills. It is hard to find a leadership figure in such a large class. However I assume that, that Clinton or Kerry could be seen as leaders, as Question 2 determined that they were the most influential senators in the network.
+
+It is also important to notice that the working majority also contains 14 of the 16 female senators and all of the non-Christian senators in the network. This might suggest that both minorities tend to behave in similar ways disregarding party membership. However, considering the small number of republican miniority senators, it is difficult to determine how accurate this is.
+
+This leaves Class 2,3 and 4 as the opposition, which is also further supported by the fact that all three classes contain only Republican senators. As a consequnece, I assume that their behaviour would be relatively similar - i.e. having to find democratic cosponsors to get any bill passed and probably avoiding cosponsoring to many democratic senators for political reason - and the real difference would be on finer political points
+
+Class number 2 is mostly composed by Republican senators that could be defined as "moderate conservatives" such as Lamar, Gregg, Bennett(Govtrack, 2019). However, this class also has Brown, a very liberal Democratic senator that seems to have very little in common with the others. Interestingly, he was also classified as a Republican by the Louvain community detection algorithm, meaning that he might be potentially showing a cosponsorship behaviour more akin to a moderate Republican 
+
+Class 3 is probably the most clear cut of the three opposition classes to classify. They are the only class that is 100% composed by male, Republican, Christians and their most prominent senator, and also miniority leader for the republicans, is Mitch McConnell, a politicians famous for his very conservative views on topics ranging from foreign politics to abortion and drugs (Zengerle, 2013). Therefore the role of Class 3 could be described as "extreme conservatives". In fact, it contained the most exteremely conservative right wing senators according to various analysis of the voting patterns of the senate, such as Inhofe, Barasso, and Coburn (Lewis, 2019 & Govtrack, 2019). 
+
+Lastly Class 4 is composed by Republicans without a specific leaning. I believe that their behaviour is best described by the heatmap that shows a red rectangle on the left that crosses the whole graph top to bottom without having drastic changes in colour. This shows a group of senator, mostly part of Class 4, that are relatively close to both Republican and Democratic alike. Their position could be defined as "true centrist" and is proable that they tend to cosponsor sentors of both parties without a specific preference.
+
+
+
+## Question 5
+What helps predict whether senators cosponsor bills? Consider the exponential random graph model for the simplified network shown below. Interpret each term in the ERGM (except edges) – how does each term influence whether or not two senators are connected? In your discussion, make explicit reference to the concepts of homophily and transitivity. 
+
+Calculate the fitted probability of a tie between: two women from the same region, who joined in the same year, and who have both cosponsored a bill with one other senator; once, when they are both Democrats and once when they are both Republicans.
+
+![ERGM result](/Users/Davide/Desktop/EGRM.png)
+
+
+Estimates (with standard error in parentheses) of the coefficients for each term in the exponential random graph model, which predicts the log-odds of a tie in the simplified network. The GWESP term has an alpha value of 0.6.
+ 
+```{r}
+#calculating odds ratios and their confiedence intervals
+coeff <- c(-6.742,-1.204,1.841,-1.110,0.647,0.663,-0.007,3.724)
+or <- exp(coeff)
+#standard errors
+ste <- c(0.715, 0.035, 0.069, 0.128, 0.150, 0.112, 0.004, 0.375)
+lci <- exp(coeff-1.96*ste) # the lower confidence intervals
+uci <- exp(coeff+1.96*ste) # the upper confidence intervals
+#putting everthing together
+oddsratios <- cbind(c("edges", "nodefactor.party.Republican", "nodematch.party", "nodefactor.gender.Male", "nodematch.gender", "nodematch.region", "absdiff.joined", "gwesp.fixed.0.6"),round(lci,digits = 4),round(or,digits = 4),round(uci,digits = 4)) ## sticking these vectors together, rounding each to 4 decimal places
+colnames(oddsratios) <- c("Factor","Lower","Odds Ratio","Upper")
+oddsratios
+
+#Calculating probability of tie
+estoprob <- function(logit) {
+  exp(logit)/(1+exp(logit))
+}
+
+#Democratic
+tie1 <- c(1,0,1,0,1,1,0,1)*coeff
+estoprob(sum(tie1))
+
+#Republican
+tie2 <- c(1,2,1,0,1,1,0,1)*coeff
+estoprob(sum(tie2))
+
+#the result is probability conditional on the rest of the network
+```
+
+What helps predict whether senators cosponsor bills? Consider the exponential random graph model for the simplified network shown below. Interpret each term in the ERGM (except edges) – how does each term influence whether or not two senators are connected? In your discussion, make explicit reference to the concepts of homophily and transitivity. 
+
+All the terms of the ERGM are significant at the 99.9% confidence level except absdiff.joined. Therefore, we can be fairly confident about the significane of the ERGM's results
+
+#### nodefactor.party.Republican
+The odds ratio of this term shows that Republicans are 0.3 as likely to have a strong cosponsorship tie than the baseline (i.e. being part of the Democratic party), or in other words, Republicans are 70% less likely to have a strong cosponsorship tie than Democrats.  This is probably due to the fact that during the 110th Congress the Repiublicans were in minority. Hence, they probably cosponosored less bills overall, and as a consequence created less strong cosponsorship ties than the Democrats.
+
+#### "nodematch.party" 
+The odds ratio of this term shows that same party member as 6.3 times as likely to have a strong cosponsorship bill than members of differnet party. Once again this is hardly suprising considering the results of the previous question, and it is further proof that there is strong party homophily in the simple network. Even the lowest estimate in the odds ratio confidence intervals is still double the next highest ("nodematch.region"). This is also the second strongest term after "gwesp.fixed.0.6." which shows how imporant party ideology is in the creation of strong cosponsorship relations.
+
+#### "nodefactor.gender.Male"
+The odds ratio of thi term shows that male senators are 0.3296 as likely to have to have a strong cosponsorship tie than the baseline (i.e being famale), or in other words male senator are about 67% less likely to have a strong cosponsorship tie than female senators. This might be due to the the fact that there are only 16 female senator in the network. (https://www.infoplease.com/history-and-government/us-government/women-110th-congress)
+
+This might mean that female senators are very active and tend to cosponsor more bills than their male counter part, or that the consponsorship of female senator is very sought after. Both these theories are supported by (https://www.quorum.us/data-driven-insights/working-together-and-across-the-aisle-female-senators-pass-more-legislation-than-male-colleagues/311/) which also mentions "Women in the Senate traditionally meet for periodic dinners (...) Commentators have in part attributed this clear bipartisan effort in which women in the Senate can form personal relationships to the willingness of women to work on legislation with each other"
+
+#### "nodematch.gender" 
+The odds ratio of this term shows that same senators of the same gender as 1.91 times as likely to have a strong cosponsorship bill than a male and female senators, which shows the existence of relevant gender homophily in the simple network. The homphily for female sentors might be even stronger if we take into account the  "nodefactor.gender.Male" results and the findings from (https://www.quorum.us/data-driven-insights/working-together-and-across-the-aisle-female-senators-pass-more-legislation-than-male-colleagues/311/). 
+
+### "nodematch.region"
+The odds ratio of this term shows that same senators of the same Cesus region are 1.94 times as likely to have a strong cosponsorship bill senators from different regions, which shows the existence of regional homophily in the simple network. This is probably due to the fact that senators from the same census region might attempt to push similar agendas due to local politics
+
+####"absdiff.joined"
+This is the only ERGM term that is not significant, which suggests that the absolute difference of the year senators joined the senate does not significantly change the probability of a strong cosponsorship relation forming. Nevertheless the odds ratio result indicates a small penalty for each year of difference, which might be simply due to the fact that senators that joined at the same time might be slightly more likely to have a strong cosposnsorhip relation (why?)
+
+
+#### "gwesp.fixed.0.6"
+According to the results of the ERGM, the existence of common neighbours is the most important factor in determining the probability that two senators will have a strong cosponsorshp relation between them. This is supported also by the results of Question 1 that showed the simple network as having strong transitivity, as expected by a real life social network. The odds ratio shows that the existence of one common neighbour between two senators increases the probability of the two senators having a strong cosponsorship relation (i.e. triadic closure) by a staggering 41 times, with the highest value of the 95% confidence interval going over twice that result. This clearly shows the power that having strong cosponsorship relations with key members of the senate (such as the ones identified by Question 2), might improve the chances of creating new strong relations with other member of the senate.
+
